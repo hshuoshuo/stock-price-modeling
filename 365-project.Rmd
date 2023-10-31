@@ -1,0 +1,319 @@
+---
+title: "365-project"
+author: "Shuo Han"
+date: "2023-03-10"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+options(digits = 4)
+```
+
+# 1
+1 TIREX: T. Rowe Price Institutional Emerging Markets Equity Fund is is an actively managed mutual fund that primarily invests in equity securities of companies located in emerging markets around the world.
+9 PRMTX: T. Rowe Price Mid-Cap Growth Fund is an actively managed mutual fund that primarily invests in the stocks of mid-sized U.S. companies that have the potential for above-average earnings growth.
+14 GTCAX: Goldman Sachs Tactical Credit Fund Class A is an actively managed mutual fund that primarily invests in fixed income securities.
+24 FSUTX: Fidelity Select Utilities Portfolio is an actively managed mutual fund that primarily invests in the stocks of companies in the utilities sector.
+
+# 2
+```{r}
+library(tseries)
+rf <- read.csv("risk-free.csv", header=T)
+rff <- tail(rf[,2], n=60)
+rfree<-(1+rff/100)^(1/12)-1
+
+tirex <- as.vector(get.hist.quote(instrument="TIREX", start="2016-12-01", end="2021-12-31",quote="AdjClose", compression="m"))
+tirex.m.ret <- (tirex[-1]-tirex[-61])/tirex[-61]
+tirex.ex <- tirex.m.ret-rfree
+
+prmtx <- as.vector(get.hist.quote(instrument="PRMTX", start="2016-12-01", end="2021-12-31", quote="AdjClose", compression="m"))
+prmtx.m.ret <- (prmtx[-1]-prmtx[-61])/prmtx[-61]
+prmtx.ex <- prmtx.m.ret-rfree
+
+gtcax <- as.vector(get.hist.quote(instrument="GTCAX", start="2016-12-01", end="2021-12-31", quote="AdjClose", compression="m"))
+gtcax.m.ret <- (gtcax[-1]-gtcax[-61])/gtcax[-61]
+gtcax.ex <- gtcax.m.ret-rfree
+
+fsutx <- as.vector(get.hist.quote(instrument="FSUTX", start="2016-12-01", end="2021-12-31", quote="AdjClose", compression="m"))
+fsutx.m.ret <- (fsutx[-1]-fsutx[-61])/fsutx[-61]
+fsutx.ex <- fsutx.m.ret-rfree
+```
+
+# 3
+```{r}
+gspc <- as.vector(get.hist.quote(instrument = "^GSPC", start = "2016-12-01", end= "2021-12-31", quote = "AdjClose", compression = "m"))
+gspc.m.ret <- (gspc[-1]-gspc[-61])/gspc[-61]
+sp500 <- gspc.m.ret-rfree
+
+mean(sp500)
+sd(sp500)
+```
+
+# 4
+```{r}
+ex <- data.frame("TIREX" = tirex.ex, "PRMTX" = prmtx.ex, "GTCAX" = gtcax.ex, "FSUTX" = fsutx.ex)
+Rbar <- apply(ex, 2, mean) 
+Rbar
+S2<-apply(ex, 2, sd) 
+S2
+```
+The fund PRMTX has the largest return, the fund GTCAX has the smallest return, and there is not a big difference between returns of these funds. The fund GTCAX has the largest risk, the fund FSUTX has the smallest risk, and there is not a big difference between the risks of these funds. Thus, there is not a fund that is clearly inferior or superior to each of the other three.  
+
+# 5
+```{r}
+cov(ex)
+```
+
+# 6
+```{r}
+library(ShrinkCovMat)
+cov.shrink<-shrinkcovmat.equal(t(ex))
+cov.shrink$Sigmahat
+```
+
+# 7
+```{r}
+library(ppcor)
+# calculate the partial correlation coefficients for all pairs of assets
+pcor <- pvalue <- matrix(0, 4, 4)
+  for (i in 1:3){
+    for (j in (i+1):4){
+      res <-pcor.test(ex[,i], ex[, j], sp500) 
+      pcor[i, j]<-res[1, 1]
+      pvalue[i, j]<-res[1, 2]
+    }
+  }
+rownames(pvalue)<-colnames(ex) 
+colnames(pvalue)<-colnames(ex)
+print(as.table(pvalue), zero.print=".")
+```
+Based on the Bonferroni correction, all p-values in the prior table are greater than the adjusted typical significance level $5\%$. So we can accept the null hypothesis that the partial correlation coefficient is 0 for all pairs of funds. Thus, the single-Index model appears to be appropriate for these data with partial correlation coefficient.
+
+# 8
+```{r}
+# risk-averse portfolio
+library(quadprog)
+A<-matrix(c(1,1,1,1), nrow=4, ncol=1)
+rw<-solve.QP(Dmat=5*cov(ex),dvec=Rbar,Amat=A, bvec=1, meq=1)$solution
+rw
+
+
+# return mean
+rm <- sum(rw*Rbar)
+rm
+
+# return standard deviation
+rsd <-(rw%*%cov(ex)%*%rw)^.5 
+rsd
+```
+
+# 9
+```{r}
+# risk-averse portfolio
+library(quadprog)
+A<-matrix(c(1,1,1,1), nrow=4, ncol=1)
+rw2<-solve.QP(Dmat=10*cov(ex),dvec=Rbar,Amat=A, bvec=1, meq=1)$solution
+rw2
+
+
+# return mean
+rm2 <- sum(rw2*Rbar)
+rm2
+
+# return standard deviation
+rsd2 <-(rw2%*%cov(ex)%*%rw2)^.5 
+rsd2
+```
+
+# 10
+```{r}
+# risk-averse portfolio
+library(quadprog)
+A<-matrix(c(1,1,1,1), nrow=4, ncol=1)
+rw3<-solve.QP(Dmat=20*cov(ex),dvec=Rbar,Amat=A, bvec=1, meq=1)$solution
+rw3
+
+
+# return mean
+rm3 <- sum(rw3*Rbar)
+rm3
+
+# return standard deviation
+rsd3 <-(rw3%*%cov(ex)%*%rw3)^.5 
+rsd3
+```
+
+# 11
+When $\lambda$ taken to be 20, the portfolio has the smallest risk and mean return. When $\lambda$ taken to be 5, the portfolio has the largest risk and estimated return mean. Since a larger $\lambda$ means we are less willing to tolerate higher risk invest, so the portfolio with the largest $\lambda$ should have the smallest risk. Also, since risk-averse portfolios are on the efficient frontier, the mean return tends to be larger with a larger risk. Thus, a larger $\lambda$ are expected with a smaller risk and mean return. So yes, these results correspond to what I would expect based on portfolio theory.
+
+# 12
+```{r}
+w_T <- solve(cov(ex), Rbar) / sum(solve(cov(ex), Rbar))
+w_T
+
+# return mean
+mT <- sum(w_T*Rbar)
+mT
+
+# return standard deviation
+sdT <-(w_T%*%cov(ex)%*%w_T)^.5 
+sdT
+```
+
+# 13
+```{r}
+sn <- solve.QP(Dmat=2*cov(ex), dvec=rep(0,4), Amat=cbind(Rbar,diag(4)), bvec=c(1, rep(0,4)), meq=1)$solution 
+wTn<-sn/sum(sn)
+wTn
+
+# return mean
+mTn <- sum(wTn * Rbar)
+mTn
+
+# return standard deviation
+sdTn <- (wTn%*%cov(ex)%*%wTn)^.5
+sdTn
+```
+
+# 14
+```{r}
+WTS<-solve(cov.shrink$Sigmahat, Rbar) 
+wTs<-WTS/sum(WTS)
+wTs
+
+# return mean
+mTs <- sum(wTs/sum(wTs) * Rbar)
+mTs
+
+# return standard deviation
+sdTs <- ((wTs/sum(wTs))%*%(cov.shrink$Sigmahat)%*%(wTs/sum(wTs)))^.5
+sdTs
+```
+
+# 15
+```{r}
+sr8 <- rm / rsd
+sr8
+sr9 <- rm2 / rsd2
+sr9
+sr10 <- rm3 / rsd3
+sr10
+sr12 <- mT / sdT
+sr12
+sr13 <- mTn / sdTn
+sr13
+sr14 <- mTs / sdTs
+sr14
+```
+
+The largest Sharpe ratio is 12, which corresponds to my expectation since it maximizes the Sharpe ratio as a tangency portfolio. And the sharpe ratio in 9 is also the largest, but with a larger sharpe ratio, the $\lambda$ should also be the largest, however it is not here, sothe results are not in consistent with portfolio theory.
+
+# 16
+```{r}
+matrix5 <- data.frame("TIREX" = tirex.ex, "PRMTX" = prmtx.ex, "GTCAX" = gtcax.ex, "FSUTX" = fsutx.ex, "GSPC" = sp500)
+mu <- apply(matrix5, 2, mean)
+sigma <- cov(matrix5)
+wT5 <- solve(sigma, mu) / sum(solve(sigma, mu))
+wT5
+sum(wT5*apply(matrix5, MARGIN=2, FUN=mean))
+(wT5%*%cov(matrix5)%*%wT5)^(0.5)
+```
+
+These results disagree with what I expect based on portfolio theory and the CAPM. Since by the CAPM, the market portfolio should be the same as the tangency portfolio in 3 so for mean return and risk but not right here for risk and return, so the results disagree with what I expect based on portfolio theory and the CAPM.
+
+# 17
+```{r}
+ex1.mm <- lm(as.matrix(ex)~sp500)
+ex1.mm
+```
+
+GTCAX is the most sensitive to the market with the largest coefficient and FSUTX is the least sensitive to the market with the smallest coefficient.
+
+# 18
+```{r}
+f.pv<-function(y){ summary(lm(y~sp500))$coefficients[1,4]}
+sp500.pv <- apply(ex, 2, f.pv)
+sp500.pv.fdr<-p.adjust(sp500.pv, method="fdr") 
+min(sp500.pv.fdr)
+```
+
+The minimum adjusted p-value 0.3151 > FDR = 0.20, we do not reject the null hypothesis $\alpha_j=0$, so we conclude no stock mispriced. 
+
+# 19
+```{r}
+f.sighat<-function(y){ summary(lm(y~sp500))$sigma}
+# market components of risk
+ex1.mm$coefficients[c(2), c(1,2,3,4)]*sd(sp500)
+# non-market components of risk
+apply(ex, 2, f.sighat)
+```
+The first row is the market components of risk, while the second row above is the non-market components of risk.
+
+### 20.
+```{r}
+f.rsq<-function(y){ summary(lm(y~sp500))$r.squared}
+apply(ex, 2, f.rsq)
+```
+
+### 21.
+```{r}
+ep <-apply(ex, 1, mean)
+summary(lm(ep~sp500))
+summary(lm(ep~sp500))$coefficients[2,1]*sd(sp500)
+summary(lm(ep~sp500))$sigma
+```
+
+The first value is the market risk, and the second value is the non-market risk. In the market model, we will have the estimated beta for the portfolio equal to the weighted sum of betas for the individual assets in the portfolio with respect to the portfolio weight, which corresponds to the result of question 17. In market model, we also know that diversification can in general decrease non-market risk relative to individual market risk, and the market risk will generally be between the largest and smallest individual market risk, which corresponds to question 19. Thus, the results agree with what I expect.
+
+### 22.
+```{r}
+f.beta<-function(y){summary(lm(y~sp500))$coefficients[2, 1]}
+A5<-cbind(c(1,1,1,1),apply(ex, MARGIN=2, f.beta))
+ra22<-solve.QP(Dmat=cov(ex),dvec=c(0,0,0,0),Amat=A5, bvec=c(1,0),meq=2)
+ra22$solution
+sum(ra22$solution*Rbar)
+((ra22$solution)%*%cov(ex)%*%(ra22$solution))^(0.5)
+```
+
+### 23.
+```{r}
+sum(ra22$solution*Rbar)/((ra22$solution)%*%cov(ex)%*%(ra22$solution))^(0.5)
+mean(sp500)/sd(sp500)
+p22portfolio<-as.matrix(ex)%*%ra22$solution
+cor(p22portfolio,sp500)
+```
+Assuming that the portfolio based on the S&P 500 index is identical to the market portfolio used in the CAPM, it can also be considered as the tangency portfolio, resulting in the highest Sharpe ratio. The first result shows the estimated Sharpe ratio of the portfolio 0.4125. The second result shows the estimated Sharpe ratio of the S&P500 index, which is about 0.2865. We can see that the portfolio is larger than S&P500 index, so it contradicts CAPM. Thus, it disagree with what I would expect based on properties of the market model.
+
+### 24.
+```{r}
+summary(lm(p22portfolio~sp500))
+summary(lm(p22portfolio~sp500))$coefficients[2,1]*sd(sp500)
+```
+
+alpha is 0.0357, beta is -4.86e-16, which is really close to 0, non-market risk is 0.0873, and market risk is also nearly 0. The market model predicts a beta of 0 and, when the portfolio and market index are uncorrelated, market risk should also be 0. Therefore, the proportion of risk explained by the market is also 0. These results align with the market model's properties.
+
+### 25.
+```{r}
+# Sharpe ratio
+sr4 <- apply(ex, 2, mean)/apply(ex, 2, sd)
+sort(sr4, decreasing = TRUE)
+```
+
+```{r warning=FALSE}
+# Treynor ratio
+beta<-ex1.mm$coefficients[2,]
+tr <- apply(ex, 2, mean)/beta
+sort(tr, decreasing = TRUE)
+```
+
+```{r warning=FALSE}
+# appraisal ratio
+sm<-apply(ex, 2, f.sighat)
+ar<-ex1.mm$coefficients[1,]/sm
+sort(ar, decreasing = TRUE)
+```
+
+Based on the results, PRMTX appears to be the best investment since it has the largest ratios for all three measures. This implies that it has the highest excess return relative to market risk, sensitivity to market movements, and non-market risk. Therefore, I would conclude that FSPHX is the best option.
